@@ -28,7 +28,7 @@ class CacheServiceProvider extends ServiceProvider
         $this->configureMemcached();
         $this->configureFileSystem();
 
-        $this->app->singleton(CacheInterface::class, static fn () => ca());
+        $this->app->singleton(CacheInterface::class, static fn () => fca());
     }
 
 

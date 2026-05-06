@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace PHP_SF\Cache\Adapter;
 
 use DateInterval;
+use DateTimeImmutable;
 use PHP_SF\Cache\Abstracts\AbstractCacheAdapter;
-use PHP_SF\Cache\Exception\CacheKeyExceptionCache;
 use PHP_SF\Cache\Exception\CacheValueException;
 use PHP_SF\Cache\Exception\InvalidCacheArgumentException;
+use PHP_SF\Cache\Exception\InvalidCacheKeyException;
 use PHP_SF\Cache\Exception\InvalidConfigurationException;
 use Throwable;
 
@@ -67,16 +68,15 @@ final class APCuCacheAdapter extends AbstractCacheAdapter
         }
 
         if ($ttl instanceof DateInterval) {
-            $ttl = $ttl->s + $ttl->i * 60 + $ttl->h * 3600 + $ttl->days * 86400;
+            $now = new DateTimeImmutable();
+            $ttl = $now->add($ttl)->getTimestamp() - $now->getTimestamp();
         }
 
         try {
-            apcu_store($key, $value, $ttl);
+            return (bool)apcu_store($key, $value, $ttl);
         } catch (Throwable $e) {
             throw new InvalidCacheArgumentException($e->getMessage(), $e->getCode(), $e);
         }
-
-        return $this->has($key);
     }
 
     /**
@@ -93,21 +93,23 @@ final class APCuCacheAdapter extends AbstractCacheAdapter
      * Deletes cache keys matching a glob-style pattern.
      *
      * Wildcards: `key*`, `*key`, `*key*`, `*`.
-     * `*` in the middle (e.g. `a*b`) is invalid and throws {@link CacheKeyExceptionCache}.
+     * `*` may only appear at the start and/or end of the pattern.
+     *
+     * @throws InvalidCacheKeyException If the pattern is invalid.
      */
     public function deleteByKeyPattern(string $keyPattern): bool
     {
         self::assertAvailable();
 
         if (preg_match('/^[a-zA-Z0-9*_\-.:]+$/', $keyPattern) === 0) {
-            throw new CacheKeyExceptionCache(
+            throw new InvalidCacheKeyException(
                 sprintf('Key pattern "%s" is invalid. Only alphanumeric characters, hyphens, underscores, dots, colons and "*" are allowed.', $keyPattern)
             );
         }
 
-        if (preg_match('/^[^*].*\*.*[^*]$/', $keyPattern)) {
-            throw new CacheKeyExceptionCache(
-                sprintf('Key pattern "%s" is invalid. "*" must appear only at the start and/or end, not in the middle.', $keyPattern)
+        if (str_contains(trim($keyPattern, '*'), '*')) {
+            throw new InvalidCacheKeyException(
+                sprintf('Key pattern "%s" is invalid. "*" may only appear at the start and/or end of the pattern.', $keyPattern)
             );
         }
 

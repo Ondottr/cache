@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace PHP_SF\Cache\Adapter;
 
 use DateInterval;
+use DateTimeImmutable;
 use PHP_SF\Cache\Abstracts\AbstractCacheAdapter;
-use PHP_SF\Cache\Exception\CacheKeyExceptionCache;
 use PHP_SF\Cache\Exception\InvalidCacheArgumentException;
+use PHP_SF\Cache\Exception\InvalidCacheKeyException;
 use PHP_SF\Cache\Exception\InvalidConfigurationException;
 use Symfony\Component\Filesystem\Filesystem;
 use Throwable;
@@ -47,6 +48,12 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
     /** Cache directory set via {@link configure()}; empty string means fall back to env/tmp. */
     private static string      $configuredCacheDir   = '';
 
+
+    /** Always returns true — the filesystem is always available. */
+    public static function isAvailable(): bool
+    {
+        return true;
+    }
 
     /**
      * Explicitly configure the adapter. Must be called before {@link getInstance()} / {@link fca()}.
@@ -88,11 +95,11 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
         private readonly Filesystem $filesystem,
         private readonly string $cacheDir,
     ) {
-        // Sync static state so that fca() / getInstance() returns an equivalent instance
-        // when this object was created by a DI container rather than via configure().
+        // Sync static state so that fca() / getInstance() returns this instance
+        // when it was created by a DI container rather than via configure().
         self::$configuredFilesystem = $filesystem;
         self::$configuredCacheDir   = $cacheDir;
-        self::$instance             = null;
+        self::$instance             = $this;
 
         try {
             if (!$this->filesystem->exists($this->cacheDir)) {
@@ -128,7 +135,8 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
     public function set(string $key, mixed $value, DateInterval|int|null $ttl = self::DEFAULT_TTL): bool
     {
         if ($ttl instanceof DateInterval) {
-            $ttl = $ttl->s + $ttl->i * 60 + $ttl->h * 3600 + $ttl->days * 86400;
+            $now = new DateTimeImmutable();
+            $ttl = $now->add($ttl)->getTimestamp() - $now->getTimestamp();
         }
 
         $data = [
@@ -139,11 +147,10 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
 
         try {
             $this->filesystem->dumpFile($this->getFilePath($key), serialize($data));
+            return true;
         } catch (Throwable $e) {
             throw new InvalidCacheArgumentException($e->getMessage(), $e->getCode(), $e);
         }
-
-        return $this->has($key);
     }
 
     /**
@@ -208,19 +215,21 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
      *   - `*key*`  — keys containing "key"
      *   - `*`      — all keys
      *
-     * @throws CacheKeyExceptionCache If the pattern is invalid.
+     * The `*` wildcard may only appear at the start and/or end of the pattern.
+     *
+     * @throws InvalidCacheKeyException If the pattern is invalid.
      */
     public function deleteByKeyPattern(string $keyPattern): bool
     {
         if (preg_match('/^[a-zA-Z0-9*_\-.:\/\\\\]+$/', $keyPattern) === 0) {
-            throw new CacheKeyExceptionCache(
+            throw new InvalidCacheKeyException(
                 sprintf('Key pattern "%s" is invalid.', $keyPattern)
             );
         }
 
-        if (preg_match('/^[^*].*\*.*[^*]$/', $keyPattern)) {
-            throw new CacheKeyExceptionCache(
-                sprintf('Key pattern "%s" is invalid. "*" must appear only at the start and/or end, not in the middle.', $keyPattern)
+        if (str_contains(trim($keyPattern, '*'), '*')) {
+            throw new InvalidCacheKeyException(
+                sprintf('Key pattern "%s" is invalid. "*" may only appear at the start and/or end of the pattern.', $keyPattern)
             );
         }
 
@@ -228,13 +237,8 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
         $result = true;
 
         foreach ($files as $file) {
-            $raw = file_get_contents($file);
-            if ($raw === false) {
-                continue;
-            }
-
-            $data = unserialize($raw);
-            if (!is_array($data) || !isset($data['key'])) {
+            $data = $this->readFromPath($file);
+            if ($data === null || !isset($data['key'])) {
                 continue;
             }
 
@@ -256,7 +260,7 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
 
         foreach ($values as $key => $value) {
             if (is_string($key) === false) {
-                throw new CacheKeyExceptionCache();
+                throw new InvalidCacheKeyException();
             }
 
             $result = $result && $this->set($key, $value, $ttl);
@@ -279,7 +283,17 @@ final class FileSystemCacheAdapter extends AbstractCacheAdapter
      */
     private function read(string $key): ?array
     {
-        $raw = file_get_contents($this->getFilePath($key));
+        return $this->readFromPath($this->getFilePath($key));
+    }
+
+    /**
+     * Reads and deserializes a cache file by its absolute path.
+     *
+     * @return array{key: string, value: mixed, expires_at: int|null}|null Null if the file is missing or corrupt.
+     */
+    private function readFromPath(string $filePath): ?array
+    {
+        $raw = file_get_contents($filePath);
 
         if ($raw === false) {
             return null;

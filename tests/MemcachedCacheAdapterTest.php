@@ -22,7 +22,9 @@ final class MemcachedCacheAdapterTest extends TestCase
 
     protected function tearDown(): void
     {
-        mca()->clear();
+        if (MemcachedCacheAdapter::isAvailable()) {
+            mca()->clear();
+        }
     }
 
 

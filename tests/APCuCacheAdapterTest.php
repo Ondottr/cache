@@ -6,8 +6,8 @@ namespace PHP_SF\Cache\Tests;
 
 use DateInterval;
 use PHP_SF\Cache\Adapter\APCuCacheAdapter;
-use PHP_SF\Cache\Exception\CacheKeyExceptionCache;
 use PHP_SF\Cache\Exception\CacheValueException;
+use PHP_SF\Cache\Exception\InvalidCacheKeyException;
 use PHPUnit\Framework\TestCase;
 
 final class APCuCacheAdapterTest extends TestCase
@@ -205,8 +205,14 @@ final class APCuCacheAdapterTest extends TestCase
 
     public function testDeleteByKeyPatternInvalidMiddleWildcard(): void
     {
-        $this->expectException(CacheKeyExceptionCache::class);
+        $this->expectException(InvalidCacheKeyException::class);
         aca()->deleteByKeyPattern('key*key');
+    }
+
+    public function testDeleteByKeyPatternInvalidLeadingAndMiddleWildcard(): void
+    {
+        $this->expectException(InvalidCacheKeyException::class);
+        aca()->deleteByKeyPattern('*key*other');
     }
 
 }

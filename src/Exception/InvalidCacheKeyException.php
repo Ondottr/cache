@@ -11,7 +11,7 @@ use Throwable;
  *
  * Extends {@link InvalidCacheArgumentException} to satisfy the PSR-16 contract.
  */
-final class CacheKeyExceptionCache extends InvalidCacheArgumentException
+final class InvalidCacheKeyException extends InvalidCacheArgumentException
 {
     public function __construct(string $message = '', int $code = 0, Throwable|null $previous = null)
     {

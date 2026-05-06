@@ -6,7 +6,7 @@ namespace PHP_SF\Cache\Tests;
 
 use DateInterval;
 use PHP_SF\Cache\Adapter\FileSystemCacheAdapter;
-use PHP_SF\Cache\Exception\CacheKeyExceptionCache;
+use PHP_SF\Cache\Exception\InvalidCacheKeyException;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Filesystem\Filesystem;
 
@@ -35,6 +35,15 @@ final class FileSystemCacheAdapterTest extends TestCase
         $instance1 = FileSystemCacheAdapter::getInstance();
         $instance2 = FileSystemCacheAdapter::getInstance();
         $this->assertSame($instance1, $instance2);
+    }
+
+    public function testDiConstructedInstanceBecomesTheSingleton(): void
+    {
+        $filesystem = new Filesystem();
+        $adapter    = new FileSystemCacheAdapter($filesystem, $this->cacheDir);
+
+        $this->assertSame($adapter, FileSystemCacheAdapter::getInstance());
+        $this->assertSame($adapter, fca());
     }
 
     public function testGet(): void
@@ -206,8 +215,14 @@ final class FileSystemCacheAdapterTest extends TestCase
 
     public function testDeleteByKeyPatternInvalidMiddleWildcard(): void
     {
-        $this->expectException(CacheKeyExceptionCache::class);
+        $this->expectException(InvalidCacheKeyException::class);
         fca()->deleteByKeyPattern('a*b');
+    }
+
+    public function testDeleteByKeyPatternInvalidLeadingAndMiddleWildcard(): void
+    {
+        $this->expectException(InvalidCacheKeyException::class);
+        fca()->deleteByKeyPattern('*a*b');
     }
 
 }

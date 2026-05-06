@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace PHP_SF\Cache\Adapter;
 
 use DateInterval;
+use DateTimeImmutable;
 use PHP_SF\Cache\Abstracts\AbstractCacheAdapter;
 use PHP_SF\Cache\Connection\Redis;
-use PHP_SF\Cache\Exception\CacheKeyExceptionCache;
 use PHP_SF\Cache\Exception\CacheValueException;
 use PHP_SF\Cache\Exception\InvalidCacheArgumentException;
+use PHP_SF\Cache\Exception\InvalidCacheKeyException;
 use PHP_SF\Cache\Exception\InvalidConfigurationException;
 use Throwable;
 
@@ -44,6 +45,12 @@ final class RedisCacheAdapter extends AbstractCacheAdapter
     {
     }
 
+    /** Returns true if the Redis server is reachable. Delegates to {@link Redis::isAvailable()}. */
+    public static function isAvailable(): bool
+    {
+        return Redis::isAvailable();
+    }
+
     /**
      * Note: Redis stores all values as strings via Predis. Integer/float values are returned as strings.
      *
@@ -70,7 +77,8 @@ final class RedisCacheAdapter extends AbstractCacheAdapter
         }
 
         if ($ttl instanceof DateInterval) {
-            $ttl = $ttl->s + $ttl->i * 60 + $ttl->h * 3600 + $ttl->days * 86400;
+            $now = new DateTimeImmutable();
+            $ttl = $now->add($ttl)->getTimestamp() - $now->getTimestamp();
         }
 
         try {
@@ -79,13 +87,13 @@ final class RedisCacheAdapter extends AbstractCacheAdapter
             } else {
                 Redis::getClient()->set($key, $value);
             }
+
+            return true;
         } catch (InvalidConfigurationException $e) {
             throw $e;
         } catch (Throwable $e) {
             throw new InvalidCacheArgumentException($e->getMessage(), $e->getCode(), $e);
         }
-
-        return $this->has($key);
     }
 
     /**
@@ -108,21 +116,21 @@ final class RedisCacheAdapter extends AbstractCacheAdapter
      *   - `*`      — all keys
      *
      * Note: only alphanumeric characters and `*` are allowed in the pattern.
-     * The `*` wildcard must not appear in the middle of the pattern (e.g. `a*b` is invalid).
+     * The `*` wildcard may only appear at the start and/or end of the pattern.
      *
-     * @throws CacheKeyExceptionCache If the pattern is invalid.
+     * @throws InvalidCacheKeyException If the pattern is invalid.
      */
     public function deleteByKeyPattern(string $keyPattern): bool
     {
         if (preg_match('/^[a-zA-Z0-9*_\-.:]+$/', $keyPattern) === 0) {
-            throw new CacheKeyExceptionCache(
+            throw new InvalidCacheKeyException(
                 sprintf('Key pattern "%s" is invalid. Only alphanumeric characters, hyphens, underscores, dots, colons and "*" are allowed.', $keyPattern)
             );
         }
 
-        if (preg_match('/^[^*].*\*.*[^*]$/', $keyPattern)) {
-            throw new CacheKeyExceptionCache(
-                sprintf('Key pattern "%s" is invalid. "*" must appear only at the start and/or end, not in the middle.', $keyPattern)
+        if (str_contains(trim($keyPattern, '*'), '*')) {
+            throw new InvalidCacheKeyException(
+                sprintf('Key pattern "%s" is invalid. "*" may only appear at the start and/or end of the pattern.', $keyPattern)
             );
         }
 

@@ -10,9 +10,8 @@ use PHP_SF\Cache\Adapter\FileSystemCacheAdapter;
 use PHP_SF\Cache\Adapter\MemcachedCacheAdapter;
 use PHP_SF\Cache\Adapter\RedisCacheAdapter;
 use PHP_SF\Cache\CacheInterface;
-use PHP_SF\Cache\Exception\CacheKeyExceptionCache;
 use PHP_SF\Cache\Exception\CacheValueException;
-use PHP_SF\Cache\Exception\InvalidCacheArgumentException;
+use PHP_SF\Cache\Exception\InvalidCacheKeyException;
 
 /**
  * Base class for all cache adapters.
@@ -22,7 +21,7 @@ use PHP_SF\Cache\Exception\InvalidCacheArgumentException;
  * {@link get()}, {@link set()}, and {@link delete()} primitives.
  *
  * Concrete adapters must implement: {@link get()}, {@link set()}, {@link delete()},
- * {@link clear()}, {@link has()}, and {@link deleteByKeyPattern()}.
+ * {@link clear()}, {@link has()}, {@link deleteByKeyPattern()}, and {@link isAvailable()}.
  */
 abstract class AbstractCacheAdapter implements CacheInterface
 {
@@ -44,6 +43,14 @@ abstract class AbstractCacheAdapter implements CacheInterface
     /** @var static[] Singleton registry keyed by concrete adapter class name. */
     private static array $instances = [];
 
+    /**
+     * Returns true if the backend is available and can accept connections.
+     *
+     * Safe to call before constructing an instance — does not throw.
+     * Use this in test setUp() or health checks to decide whether to skip or proceed.
+     */
+    abstract public static function isAvailable(): bool;
+
 
     /**
      * Returns the singleton instance for the calling adapter class.
@@ -61,13 +68,7 @@ abstract class AbstractCacheAdapter implements CacheInterface
     /** Instantiates and caches the singleton for the calling adapter class. */
     private static function setInstance(): void
     {
-        self::$instances[ static::class ] = match (static::class) {
-            self::APCU_CACHE_ADAPTER       => new APCuCacheAdapter(),
-            self::REDIS_CACHE_ADAPTER      => new RedisCacheAdapter(),
-            self::MEMCACHED_CACHE_ADAPTER  => new MemcachedCacheAdapter(),
-            self::FILESYSTEM_CACHE_ADAPTER => FileSystemCacheAdapter::getInstance(),
-            default                        => throw new InvalidCacheArgumentException('Invalid cache adapter type'),
-        };
+        self::$instances[ static::class ] = new static();
     }
 
 
@@ -79,7 +80,7 @@ abstract class AbstractCacheAdapter implements CacheInterface
      *
      * @return array<string, mixed> Map of key → value; missing keys map to $default.
      *
-     * @throws CacheKeyExceptionCache If any key is not a string.
+     * @throws InvalidCacheKeyException If any key is not a string.
      */
     public function getMultiple(iterable $keys, mixed $default = null): iterable
     {
@@ -87,7 +88,7 @@ abstract class AbstractCacheAdapter implements CacheInterface
 
         foreach ($keys as $key) {
             if (is_string($key) === false) {
-                throw new CacheKeyExceptionCache();
+                throw new InvalidCacheKeyException();
             }
 
             $result[ $key ] = $this->get($key, $default);
@@ -104,8 +105,8 @@ abstract class AbstractCacheAdapter implements CacheInterface
      * @param iterable<string, scalar> $values Key-value pairs to store.
      * @param DateInterval|int|null    $ttl    TTL in seconds, a DateInterval, or null for no expiry.
      *
-     * @throws CacheKeyExceptionCache If any key is not a string.
-     * @throws CacheValueException    If any value is not scalar.
+     * @throws InvalidCacheKeyException If any key is not a string.
+     * @throws CacheValueException      If any value is not scalar.
      */
     public function setMultiple(iterable $values, DateInterval|int|null $ttl = self::DEFAULT_TTL): bool
     {
@@ -113,7 +114,7 @@ abstract class AbstractCacheAdapter implements CacheInterface
 
         foreach ($values as $key => $value) {
             if (is_string($key) === false) {
-                throw new CacheKeyExceptionCache();
+                throw new InvalidCacheKeyException();
             }
 
             if (is_scalar($value) === false) {
@@ -131,7 +132,7 @@ abstract class AbstractCacheAdapter implements CacheInterface
      *
      * @param iterable<string> $keys Keys to delete.
      *
-     * @throws CacheKeyExceptionCache If any key is not a string.
+     * @throws InvalidCacheKeyException If any key is not a string.
      */
     public function deleteMultiple(iterable $keys): bool
     {
@@ -139,18 +140,13 @@ abstract class AbstractCacheAdapter implements CacheInterface
 
         foreach ($keys as $key) {
             if (is_string($key) === false) {
-                throw new CacheKeyExceptionCache();
+                throw new InvalidCacheKeyException();
             }
 
             $result = $result && $this->delete($key);
         }
 
         return $result;
-    }
-
-
-    private function __clone(): void
-    {
     }
 
 }

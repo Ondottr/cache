@@ -7,8 +7,8 @@ namespace PHP_SF\Cache\Tests;
 use DateInterval;
 use PHP_SF\Cache\Adapter\RedisCacheAdapter;
 use PHP_SF\Cache\Connection\Redis;
-use PHP_SF\Cache\Exception\CacheKeyExceptionCache;
 use PHP_SF\Cache\Exception\CacheValueException;
+use PHP_SF\Cache\Exception\InvalidCacheKeyException;
 use PHPUnit\Framework\TestCase;
 
 final class RedisCacheAdapterTest extends TestCase
@@ -22,7 +22,9 @@ final class RedisCacheAdapterTest extends TestCase
 
     protected function tearDown(): void
     {
-        rca()->clear();
+        if (RedisCacheAdapter::isAvailable()) {
+            rca()->clear();
+        }
     }
 
 
@@ -189,8 +191,14 @@ final class RedisCacheAdapterTest extends TestCase
 
     public function testDeleteByKeyPatternInvalidMiddleWildcard(): void
     {
-        $this->expectException(CacheKeyExceptionCache::class);
+        $this->expectException(InvalidCacheKeyException::class);
         rca()->deleteByKeyPattern('key*key');
+    }
+
+    public function testDeleteByKeyPatternInvalidLeadingAndMiddleWildcard(): void
+    {
+        $this->expectException(InvalidCacheKeyException::class);
+        rca()->deleteByKeyPattern('*key*other');
     }
 
 }

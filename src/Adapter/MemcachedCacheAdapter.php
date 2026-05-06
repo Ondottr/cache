@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHP_SF\Cache\Adapter;
 
 use DateInterval;
+use DateTimeImmutable;
 use PHP_SF\Cache\Abstracts\AbstractCacheAdapter;
 use PHP_SF\Cache\Connection\Memcached;
 use PHP_SF\Cache\Exception\CacheValueException;
@@ -46,6 +47,12 @@ final class MemcachedCacheAdapter extends AbstractCacheAdapter
     {
     }
 
+    /** Returns true if ext-memcached is loaded and the server is reachable. Delegates to {@link Memcached::isAvailable()}. */
+    public static function isAvailable(): bool
+    {
+        return Memcached::isAvailable();
+    }
+
     /**
      * @return mixed The cached value, or $default if the key does not exist.
      *
@@ -77,18 +84,17 @@ final class MemcachedCacheAdapter extends AbstractCacheAdapter
         }
 
         if ($ttl instanceof DateInterval) {
-            $ttl = $ttl->s + $ttl->i * 60 + $ttl->h * 3600 + $ttl->days * 86400;
+            $now = new DateTimeImmutable();
+            $ttl = $now->add($ttl)->getTimestamp() - $now->getTimestamp();
         }
 
         try {
-            Memcached::getInstance()->set($key, $value, $ttl);
+            return Memcached::getInstance()->set($key, $value, $ttl ?? 0);
         } catch (InvalidConfigurationException $e) {
             throw $e;
         } catch (Throwable $e) {
             throw new InvalidCacheArgumentException($e->getMessage(), $e->getCode(), $e);
         }
-
-        return $this->has($key);
     }
 
     /**

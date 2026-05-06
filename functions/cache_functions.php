@@ -30,19 +30,24 @@ if (!function_exists('ca')) {
         ])]
         string|null $cacheAdapter = null
     ): AbstractCacheAdapter {
-        if ($cacheAdapter === null) {
-            $cacheAdapter = (function_exists('apcu_enabled') && apcu_enabled())
-                ? AbstractCacheAdapter::APCU_CACHE_ADAPTER
-                : AbstractCacheAdapter::REDIS_CACHE_ADAPTER;
+        if ($cacheAdapter::isAvailable()) {
+            return $cacheAdapter::getInstance();
         }
 
-        return match ($cacheAdapter) {
-            AbstractCacheAdapter::APCU_CACHE_ADAPTER       => aca(),
-            AbstractCacheAdapter::REDIS_CACHE_ADAPTER      => rca(),
-            AbstractCacheAdapter::MEMCACHED_CACHE_ADAPTER  => mca(),
-            AbstractCacheAdapter::FILESYSTEM_CACHE_ADAPTER => fca(),
-            default                                        => throw new InvalidArgumentException('Invalid cache adapter: ' . $cacheAdapter),
-        };
+        if (APCuCacheAdapter::isAvailable()) {
+            return aca();
+        }
+
+        if (RedisCacheAdapter::isAvailable()) {
+            return rca();
+        }
+
+        if (MemcachedCacheAdapter::isAvailable()) {
+            return mca();
+        }
+
+        // Fallback to always available fca
+        return fca();
     }
 }
 
