@@ -14,7 +14,7 @@
     "require": {
         "php": ">=8.2",
         "psr/simple-cache": "^3.0",
-        "predis/predis": "^2.0",
+        "predis/predis": "^2.0|^3.0",
         "symfony/filesystem": "^6.0|^7.0"
     },
     "require-dev": {
