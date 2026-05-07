@@ -30,7 +30,7 @@ if (!function_exists('ca')) {
         ])]
         string|null $cacheAdapter = null
     ): AbstractCacheAdapter {
-        if ($cacheAdapter::isAvailable()) {
+        if ($cacheAdapter !== null && $cacheAdapter::isAvailable()) {
             return $cacheAdapter::getInstance();
         }
 
